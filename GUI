@@ -1,1 +1,139 @@
+import tkinter as tk
+from tkinter import messagebox, font
+import heapq
+from map_data import * 
 
+class RoutePlanner:
+    def __init__(self, map):
+        self.map = map
+
+    def dijkstra(self, start, end):
+        heap = [(0, start, [])]
+        visited = {}
+
+        while heap:
+            cost_time, station, path = heapq.heappop(heap)
+
+            if station in visited and visited[station] <= cost_time:
+                continue
+            visited[station] = cost_time
+            new_path = path + [station]
+
+            if station == end:
+                return new_path, cost_time
+
+            for other_station, other_time in self.map.get(station, {}).items():
+                new_cost_time = cost_time + other_time
+                if other_station not in visited or visited[other_station] > new_cost_time:
+                    heapq.heappush(heap, (new_cost_time, other_station, new_path))
+
+        return None, None
+
+
+class TransferDetector:
+    def __init__(self, station_line):
+        self.station_line = station_line
+
+    def transfer(self, path):
+        transfer_station = []
+        now_line = []
+
+        for i in range(len(path) - 1):
+            now = path[i]
+            next = path[i + 1]
+            same_line = set(self.station_line.get(now, [])).intersection(self.station_line.get(next, []))
+            if not same_line:
+                continue
+            if not now_line:
+                now_line = list(same_line)
+            else:
+                new_same = list(same_line)
+                if not set(new_same).intersection(now_line):
+                    transfer_information = {
+                        "station": now,
+                        "line_from": now_line[0],
+                        "line_to": new_same[0],
+                    }
+                    transfer_station.append(transfer_information)
+                    now_line = new_same
+
+        return transfer_station
+
+
+def transfer_output(transfer_station):
+    if not transfer_station:
+        return "No transfers needed"
+
+    message = []
+    for t in transfer_station:
+        mess_EN = (f"Transfer at {reverse_station_english_map[t['station']]} "
+                   f"from {line_english_map[t['line_from']]} to {line_english_map[t['line_to']]}\n")
+        message.append(mess_EN)
+    return "".join(message)
+
+
+class MTRApp:
+    def __init__(self, master):
+        self.master = master
+        master.title("Hong Kong MTR Route Planning System")
+        master.geometry("600x400")
+        master.config(bg="#f0f0f0")
+
+        self.title_font = font.Font(family="Helvetica", size=16, weight="bold")
+        self.label_font = font.Font(family="Helvetica", size=12)
+
+        title_label = tk.Label(master, text="MTR Route Planner", font=self.title_font, bg="#f0f0f0", fg="#2c3e50")
+        title_label.pack(pady=10)
+
+        self.start_label = tk.Label(master, text="Starting Station:", font=self.label_font, bg="#f0f0f0")
+        self.start_label.pack(pady=5)
+
+        self.start_entry = tk.Entry(master, font=self.label_font, width=30)
+        self.start_entry.pack(pady=5)
+
+        self.end_label = tk.Label(master, text="Destination Station:", font=self.label_font, bg="#f0f0f0")
+        self.end_label.pack(pady=5)
+
+        self.end_entry = tk.Entry(master, font=self.label_font, width=30)
+        self.end_entry.pack(pady=5)
+
+        self.submit_button = tk.Button(master, text="Find Route", font=self.label_font, command=self.find_route,
+                                       bg="#3498db", fg="white")
+        self.submit_button.pack(pady=15)
+
+        self.result_text = tk.Text(master, height=10, width=50, font=self.label_font, wrap=tk.WORD)
+        self.result_text.pack(pady=10)
+
+    def find_route(self):
+        start = self.start_entry.get().strip()
+        end = self.end_entry.get().strip()
+
+        start_code = station_english_map.get(start)
+        end_code = station_english_map.get(end)
+
+        if not start_code or not end_code:
+            messagebox.showerror("Error", "Invalid station name. Please check the valid names.")
+            return
+
+        planner = RoutePlanner(map)
+        path, total_time = planner.dijkstra(start_code, end_code)
+
+        if not path:
+            messagebox.showerror("Error", "Cannot find a valid route.")
+            return
+
+        detector = TransferDetector(station_line)
+        transfers = detector.transfer(path)
+        english_path = [reverse_station_english_map[i] for i in path]
+
+        result = f"Route: {' -> '.join(english_path)}\nTotal time: {total_time} minutes\n\nTransfer Information:\n"
+        result += transfer_output(transfers)
+
+        self.result_text.delete(1.0, tk.END)
+        self.result_text.insert(tk.END, result)
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = MTRApp(root)
+    root.mainloop()
